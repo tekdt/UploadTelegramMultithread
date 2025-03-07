@@ -1,12 +1,12 @@
 # UploadTelegramMultithread
-Tên phần mềm: Upload Telegram Multithread
-Tác giả: TekDT
-Mô tả: Phần mềm tải lên tệp lên Telegram với hỗ trợ đa luồng
-Ngày phát hành: 07-03-2025
-Phiên bản: 1.0.0
-Email: dinhtrungtek@gmail.com
-Telegram: @tekdt1152
-Facebook: tekdtcom
+- Tên phần mềm: Upload Telegram Multithread
+- Tác giả: TekDT
+- Mô tả: Phần mềm tải lên tệp lên Telegram với hỗ trợ đa luồng
+- Ngày phát hành: 07-03-2025
+- Phiên bản: 1.0.0
+- Email: dinhtrungtek@gmail.com
+- Telegram: @tekdt1152
+- Facebook: @tekdtcom
 
 # Hướng dẫn cài đặt
 * Chạy trực tiếp từ script python
