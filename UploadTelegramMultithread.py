@@ -6,7 +6,7 @@ from pathlib import Path
 from telegram import Bot
 from telegram.error import TelegramError
 import httpx
-from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QPushButton, QTextEdit, 
+from PyQt6.QtWidgets import (QApplication, QTabWidget, QWidget, QVBoxLayout, QPushButton, QTextEdit, 
                             QFileDialog, QLabel, QLineEdit, QProgressBar, QSpinBox)
 from PyQt6.QtCore import QThread, pyqtSignal
 from telegram.request import HTTPXRequest
@@ -28,9 +28,8 @@ def calculate_md5(file_path):
 # Hàm lưu cấu hình
 def save_config(token, user_id, selected_directory=None):
     config = load_config()  # Tải config hiện tại
-    # Cập nhật thông tin mà không làm mất hash_string
     config.update({"token": token, "user_id": user_id})
-    if selected_directory is not None:  # Chỉ lưu nếu có thư mục được chọn
+    if selected_directory is not None:
         config["selected_directory"] = selected_directory
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4)
@@ -40,12 +39,12 @@ def load_config():
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             if "hash_string" not in data:
-                data["hash_string"] = []  # Đảm bảo không bị thiếu
+                data["hash_string"] = []
             return data
-    return {"hash_string": []}  # Trả về config hợp lệ ngay cả khi file không tồn tại
-    
+    return {"hash_string": []}
+
 def save_md5(md5_hash):
-    config = load_config()  # Luôn tải lại config từ file
+    config = load_config()
     if "hash_string" not in config:
         config["hash_string"] = []
     if md5_hash not in config["hash_string"]:
@@ -54,16 +53,12 @@ def save_md5(md5_hash):
         json.dump(config, f, indent=4)
 
 def is_md5_uploaded(md5_hash):
-    config = load_config()  # Luôn tải lại config từ file
+    config = load_config()
     return md5_hash in config.get("hash_string", [])
 
 class UploadWorker:
     def __init__(self, bot_token, user_id):
-        # Cấu hình connection pool và pool timeout
-        request = HTTPXRequest(
-            connection_pool_size=20,  # Kích thước pool lớn hơn
-            pool_timeout=60.0         # Timeout dài hơn
-        )
+        request = HTTPXRequest(connection_pool_size=20, pool_timeout=60.0)
         self.bot = Bot(token=bot_token, request=request)
         self.user_id = user_id
 
@@ -93,9 +88,9 @@ class UploadThread(QThread):
         self.bot_token = bot_token
         self.directory = Path(directory).resolve()
         self.user_id = user_id
-        self.max_workers = min(max_workers, 10)  # Giới hạn tối đa 10 luồng
+        self.max_workers = min(max_workers, 10)
         self.running = True
-        self.semaphore = asyncio.Semaphore(self.max_workers)  # Giới hạn tác vụ đồng thời
+        self.semaphore = asyncio.Semaphore(self.max_workers)
 
     def stop(self):
         self.running = False
@@ -124,7 +119,7 @@ class UploadThread(QThread):
         uploaded_count = 0
 
         async def process_file(file_path):
-            async with self.semaphore:  # Giới hạn số lượng tác vụ đồng thời
+            async with self.semaphore:
                 if not self.running:
                     return None
                 return await worker.upload_file(file_path)
@@ -144,11 +139,10 @@ class UploadThread(QThread):
             except Exception as e:
                 self.log.emit(f"❌ Lỗi không xác định: {e}")
 
-class TelegramUploader(QWidget):
+class MainWidget(QWidget):
     def __init__(self):
         super().__init__()
         self.init_ui()
-        self.bot = None
         self.config = load_config()
         self.input_token.setText(self.config.get("token", ""))
         self.input_user_id.setText(self.config.get("user_id", ""))
@@ -156,6 +150,55 @@ class TelegramUploader(QWidget):
         if self.selected_directory:
             self.label.setText(f"Thư mục đã chọn: {self.selected_directory}")
         self.upload_thread = None
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        self.label_token = QLabel("Nhập Telegram Bot Token:")
+        layout.addWidget(self.label_token)
+        self.input_token = QLineEdit()
+        layout.addWidget(self.input_token)
+
+        self.label_user_id = QLabel("Nhập Telegram User ID:")
+        layout.addWidget(self.label_user_id)
+        self.input_user_id = QLineEdit()
+        layout.addWidget(self.input_user_id)
+
+        self.label = QLabel("Chọn thư mục chứa tệp cần tải lên:")
+        layout.addWidget(self.label)
+
+        self.select_button = QPushButton("Chọn thư mục")
+        self.select_button.clicked.connect(self.select_directory)
+        layout.addWidget(self.select_button)
+
+        self.thread_label = QLabel("Số luồng tải lên đồng thời (1-10):")
+        layout.addWidget(self.thread_label)
+        self.thread_count = QSpinBox()
+        self.thread_count.setRange(1, 10)
+        self.thread_count.setValue(4)
+        layout.addWidget(self.thread_count)
+
+        self.upload_button = QPushButton("Tải lên Telegram")
+        self.upload_button.clicked.connect(self.start_upload)
+        layout.addWidget(self.upload_button)
+        
+        self.stop_button = QPushButton("Dừng tải lên")
+        self.stop_button.clicked.connect(self.stop_upload)
+        self.stop_button.setEnabled(False)
+        layout.addWidget(self.stop_button)
+        
+        self.reset_button = QPushButton("Xóa lịch sử MD5")
+        self.reset_button.clicked.connect(self.reset_md5_history)
+        layout.addWidget(self.reset_button)
+
+        self.progress_bar = QProgressBar()
+        layout.addWidget(self.progress_bar)
+
+        self.log_display = QTextEdit()
+        self.log_display.setReadOnly(True)
+        layout.addWidget(self.log_display)
+
+        self.setLayout(layout)
 
     def select_directory(self):
         directory = QFileDialog.getExistingDirectory(self, "Chọn thư mục")
@@ -212,55 +255,42 @@ class TelegramUploader(QWidget):
             json.dump(config, f, indent=4)
         self.log_display.append("🗑️ Đã reset lịch sử MD5.")
 
-    def init_ui(self):
+class AboutWidget(QWidget):
+    def __init__(self):
+        super().__init__()
         layout = QVBoxLayout()
 
-        self.label_token = QLabel("Nhập Telegram Bot Token:")
-        layout.addWidget(self.label_token)
-        self.input_token = QLineEdit()
-        layout.addWidget(self.input_token)
+        # Thông tin phần mềm
+        info = {
+            "Tên phần mềm": "Upload Telegram Multithread",
+            "Tác giả": "TekDT",
+            "Mô tả": "Phần mềm tải lên tệp lên Telegram với hỗ trợ đa luồng",
+            "Ngày phát hành": "07-03-2025",
+            "Phiên bản": "1.0.0",
+            "Email": "dinhtrungtek@gmail.com",
+            "Telegram": "@tekdt1152",
+            "Facebook": "tekdtcom"
+        }
 
-        self.label_user_id = QLabel("Nhập Telegram User ID:")
-        layout.addWidget(self.label_user_id)
-        self.input_user_id = QLineEdit()
-        layout.addWidget(self.input_user_id)
-
-        self.label = QLabel("Chọn thư mục chứa tệp cần tải lên:")
-        layout.addWidget(self.label)
-
-        self.select_button = QPushButton("Chọn thư mục")
-        self.select_button.clicked.connect(self.select_directory)
-        layout.addWidget(self.select_button)
-
-        self.thread_label = QLabel("Số luồng tải lên đồng thời (1-10):")
-        layout.addWidget(self.thread_label)
-        self.thread_count = QSpinBox()
-        self.thread_count.setRange(1, 10)
-        self.thread_count.setValue(4)
-        layout.addWidget(self.thread_count)
-
-        self.upload_button = QPushButton("Tải lên Telegram")
-        self.upload_button.clicked.connect(self.start_upload)
-        layout.addWidget(self.upload_button)
-        
-        self.stop_button = QPushButton("Dừng tải lên")
-        self.stop_button.clicked.connect(self.stop_upload)
-        self.stop_button.setEnabled(False)
-        layout.addWidget(self.stop_button)
-        
-        self.reset_button = QPushButton("Xóa lịch sử MD5")
-        self.reset_button.clicked.connect(self.reset_md5_history)
-        layout.addWidget(self.reset_button)
-
-        self.progress_bar = QProgressBar()
-        layout.addWidget(self.progress_bar)
-
-        self.log_display = QTextEdit()
-        self.log_display.setReadOnly(True)
-        layout.addWidget(self.log_display)
+        for key, value in info.items():
+            label = QLabel(f"{key}: {value}")
+            layout.addWidget(label)
 
         self.setLayout(layout)
-        self.setWindowTitle("Upload Files to Telegram (Multi-threaded)")
+
+class TelegramUploader(QTabWidget):
+    def __init__(self):
+        super().__init__()
+        # Tạo các widget cho từng tab
+        self.main_tab = MainWidget()
+        self.about_tab = AboutWidget()
+
+        # Thêm các tab
+        self.addTab(self.main_tab, "Main")
+        self.addTab(self.about_tab, "About")
+
+        # Thiết lập tiêu đề và kích thước cửa sổ
+        self.setWindowTitle("Upload Telegram Multithread")
         self.resize(500, 550)
 
 if __name__ == "__main__":
