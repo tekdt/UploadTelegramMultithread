@@ -16,7 +16,7 @@
 * Chạy trực tiếp từ file EXE đã biên dịch (khuyến khích)
 
 # Hướng dẫn sử dụng
-Ở giao diện chương trình sẽ có tổng cộng 5 tab, bao gồm: Main và About
+Ở giao diện chương trình sẽ có tổng cộng 2 tab, bao gồm: Main và About
 - Tab Main: Thiết lập để chạy chương trình
 + Nhập Telegram Bot Token: Để lấy Token, bạn vào giao diện tìm kiếm của telegram (trên ứng dụng Telegram), nhập vào @BotFather rồi gõ tiếp /newbot. Sau đó, làm theo hướng dẫn để tạo BOT. Khi tạo hoan thành sẽ có token cho bạn. Hoặc bạn có thể gõ /token để lấy lại token nếu quên.
 + Nhập Telegram User ID: Đây là User ID của tài khoản Telegram bạn muốn gửi file đến. TekDT sẽ chọn tài khoản của mình để giao tiếp với BOT. Để lấy User ID, tiếp tục tìm @ChatidTelegramBot trên thanh chat của Telegram, sau đó gõ /start là bạn sẽ thấy được User ID của mình.
