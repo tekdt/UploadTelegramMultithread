@@ -1,0 +1,10 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="100" cy="100" r="90" fill="#0088cc" />
+  
+  <!-- Upload Arrow -->
+  <polygon points="90,50 110,50 110,110 130,110 100,140 70,110 90,110" fill="#ffffff" />
+  
+  <!-- Telegram Paper Plane -->
+  <path d="M50 100 L150 60 L120 140 L95 115 L70 130 Z" fill="#ffffff" stroke="#0088cc" stroke-width="5" />
+</svg>
