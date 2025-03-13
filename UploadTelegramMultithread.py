@@ -170,6 +170,7 @@ class MainWidget(QWidget):
         self.selected_directory = self.config.get("selected_directory", "")
         if self.selected_directory:
             self.label.setText(f"Thư mục đã chọn: {self.selected_directory}")
+        self.thread_count.setValue(self.config.get("thread_count", 4))
         self.upload_thread = None
 
     def init_ui(self):
@@ -197,6 +198,7 @@ class MainWidget(QWidget):
         self.thread_count = QSpinBox()
         self.thread_count.setRange(1, 10)
         self.thread_count.setValue(4)
+        self.thread_count.valueChanged.connect(self.update_thread_count)
         layout.addWidget(self.thread_count)
 
         self.upload_button = QPushButton("Tải lên Telegram")
@@ -221,6 +223,13 @@ class MainWidget(QWidget):
 
         self.setLayout(layout)
 
+    def update_thread_count(self):
+        # Lấy token, user_id và thư mục hiện có (nếu có)
+        token = self.input_token.text().strip()
+        user_id = self.input_user_id.text().strip()
+        # Cập nhật ngay thread_count vào config.json
+        save_config(token, user_id, self.selected_directory, self.thread_count.value())
+    
     def select_directory(self):
         directory = QFileDialog.getExistingDirectory(self, "Chọn thư mục")
         if directory:
