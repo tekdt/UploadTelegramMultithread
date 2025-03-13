@@ -26,11 +26,13 @@ def calculate_md5(file_path):
     return hash_md5.hexdigest().strip()
 
 # Hàm lưu cấu hình
-def save_config(token, user_id, selected_directory=None):
+def save_config(token, user_id, selected_directory=None, thread_count=None):
     config = load_config()  # Tải config hiện tại
     config.update({"token": token, "user_id": user_id})
     if selected_directory is not None:
         config["selected_directory"] = selected_directory
+    if thread_count is not None:
+        config["thread_count"] = thread_count
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4)
 
@@ -57,10 +59,11 @@ def is_md5_uploaded(md5_hash):
     return md5_hash in config.get("hash_string", [])
 
 class UploadWorker:
-    def __init__(self, bot_token, user_id):
+    def __init__(self, bot_token, user_id, log_callback):
         request = HTTPXRequest(connection_pool_size=20, pool_timeout=60.0)
         self.bot = Bot(token=bot_token, request=request)
         self.user_id = user_id
+        self.log_callback = log_callback  # Callback để log thông báo
 
     async def upload_file(self, file_path):
         file_md5 = calculate_md5(file_path)
@@ -76,6 +79,23 @@ class UploadWorker:
             save_md5(file_md5)
             return f"✅ Đã tải lên: {file_path.name}"
         except TelegramError as e:
+            error_str = str(e)
+            if "Flood control exceeded" in error_str:
+                # Sử dụng regex để trích xuất số giây cần chờ từ thông báo lỗi
+                import re
+                m = re.search(r"Retry in (\d+) seconds", error_str)
+                if m:
+                    wait_seconds = int(m.group(1))
+                    # Log thông báo dừng upload
+                    self.log_callback(f"⚠️ Flood control: tạm dừng {wait_seconds} giây trước khi thử lại...")
+                    await asyncio.sleep(wait_seconds)
+                    try:
+                        with open(file_path, 'rb') as f:
+                            await self.bot.send_document(chat_id=self.user_id, document=f)
+                        save_md5(file_md5)
+                        return f"✅ Đã tải lên sau khi chờ: {file_path.name}"
+                    except TelegramError as e2:
+                        return f"❌ Lỗi khi tải {file_path.name} sau khi chờ: {e2}"
             return f"❌ Lỗi khi tải {file_path.name}: {e}"
 
 class UploadThread(QThread):
@@ -115,7 +135,8 @@ class UploadThread(QThread):
             self.log.emit("🚀 Không có tệp nào cần tải lên.")
             return
 
-        worker = UploadWorker(self.bot_token, self.user_id)
+       # Truyền callback log vào UploadWorker
+        worker = UploadWorker(self.bot_token, self.user_id, self.log.emit)
         uploaded_count = 0
 
         async def process_file(file_path):
@@ -265,8 +286,8 @@ class AboutWidget(QWidget):
             "Tên phần mềm": "Upload Telegram Multithread",
             "Tác giả": "TekDT",
             "Mô tả": "Phần mềm tải lên tệp lên Telegram với hỗ trợ đa luồng",
-            "Ngày phát hành": "07-03-2025",
-            "Phiên bản": "1.0.0",
+            "Ngày phát hành": "13-03-2025",
+            "Phiên bản": "1.0.1",
             "Email": "dinhtrungtek@gmail.com",
             "Telegram": "@tekdt1152",
             "Facebook": "tekdtcom"
