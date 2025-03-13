@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QTabWidget, QWidget, QVBoxLayout, QPu
                             QFileDialog, QLabel, QLineEdit, QProgressBar, QSpinBox)
 from PyQt6.QtCore import QThread, pyqtSignal
 from telegram.request import HTTPXRequest
+from PyQt6.QtGui import QIcon
 
 # Cấu hình logger
 CONFIG_FILE = "config.json"
@@ -325,6 +326,14 @@ class TelegramUploader(QTabWidget):
 
 if __name__ == "__main__":
     app = QApplication([])
+    # Đặt icon cho Taskbar khi ứng dụng chạy
+    if hasattr(sys, "_MEIPASS"):
+        icon_path = os.path.join(sys._MEIPASS, "logo.ico")
+    else:
+        icon_path = "logo.ico"
+
+    app.setWindowIcon(QIcon(icon_path))  # Đặt biểu tượng cho ứng dụng
     window = TelegramUploader()
+    window.setWindowIcon(QIcon(icon_path))  # Đặt biểu tượng cho cửa sổ
     window.show()
     app.exec()
