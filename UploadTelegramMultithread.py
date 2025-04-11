@@ -61,6 +61,15 @@ def save_md5(md5_hash):
 def is_md5_uploaded(md5_hash):
     config = load_config()
     return md5_hash in config.get("hash_string", [])
+    
+async def load_config_async():
+    return await asyncio.to_thread(load_config)
+
+async def save_md5_async(md5_hash):
+    await asyncio.to_thread(save_md5, md5_hash)
+
+async def is_md5_uploaded_async(md5_hash):
+    return await asyncio.to_thread(is_md5_uploaded, md5_hash)
 
 class UploadWorker:
     def __init__(self, bot_token, user_id, log_callback):
@@ -68,41 +77,45 @@ class UploadWorker:
         self.bot = Bot(token=bot_token, request=request)
         self.user_id = user_id
         self.log_callback = log_callback  # Callback để log thông báo
-
+        self.config_lock = asyncio.Lock()
+            
     async def upload_file(self, file_path):
         file_md5 = calculate_md5(file_path)
         if not file_md5:
             return f"❌ Không thể tính MD5: {file_path.name}"
         
-        if is_md5_uploaded(file_md5):
-            return f"⚡ Bỏ qua: {file_path.name} (đã tải trước đó)"
+        # Kiểm tra MD5 với khóa
+        async with self.config_lock:
+            if await is_md5_uploaded_async(file_md5):
+                return f"⚡ Bỏ qua: {file_path.name} (đã tải trước đó)"
         
         try:
             with open(file_path, 'rb') as f:
                 await self.bot.send_document(chat_id=self.user_id, document=f)
-            save_md5(file_md5)
+            # Lưu MD5 với khóa
+            async with self.config_lock:
+                await save_md5_async(file_md5)
             return f"✅ Đã tải lên: {file_path.name}"
         except TelegramError as e:
             error_str = str(e)
             if "Flood control exceeded" in error_str:
-                # Sử dụng regex để trích xuất số giây cần chờ từ thông báo lỗi
                 import re
                 m = re.search(r"Retry in (\d+) seconds", error_str)
                 if m:
                     wait_seconds = int(m.group(1))
-                    # Log thông báo dừng upload
                     self.log_callback(f"⚠️ Flood control: tạm dừng {wait_seconds} giây trước khi thử lại...")
                     await asyncio.sleep(wait_seconds)
                     try:
                         with open(file_path, 'rb') as f:
                             await self.bot.send_document(chat_id=self.user_id, document=f)
-                        save_md5(file_md5)
+                        async with self.config_lock:
+                            await save_md5_async(file_md5)
                         return f"✅ Đã tải lên sau khi chờ: {file_path.name}"
                     except TelegramError as e2:
                         return f"❌ Lỗi khi tải {file_path.name} sau khi chờ: {e2}"
             return f"❌ Lỗi khi tải {file_path.name}: {e}"
         finally:
-            gc.collect()  # Thu gom rác sau mỗi file
+            gc.collect()
 
 class UploadThread(QThread):
     progress = pyqtSignal(int)
