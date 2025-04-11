@@ -1,6 +1,8 @@
 import os
+import gc
 import hashlib
 import json
+import sys
 import asyncio
 from pathlib import Path
 from telegram import Bot
@@ -14,7 +16,8 @@ from PyQt6.QtGui import QIcon
 
 # Cấu hình logger
 CONFIG_FILE = "config.json"
-
+version = "11/04/2025"
+released_date = "1.2.0"
 # Hàm tính MD5
 def calculate_md5(file_path):
     hash_md5 = hashlib.md5()
@@ -98,6 +101,8 @@ class UploadWorker:
                     except TelegramError as e2:
                         return f"❌ Lỗi khi tải {file_path.name} sau khi chờ: {e2}"
             return f"❌ Lỗi khi tải {file_path.name}: {e}"
+        finally:
+            gc.collect()  # Thu gom rác sau mỗi file
 
 class UploadThread(QThread):
     progress = pyqtSignal(int)
@@ -112,6 +117,7 @@ class UploadThread(QThread):
         self.max_workers = min(max_workers, 10)
         self.running = True
         self.semaphore = asyncio.Semaphore(self.max_workers)
+        self.worker = UploadWorker(self.bot_token, self.user_id, self.log.emit)
 
     def stop(self):
         self.running = False
@@ -121,45 +127,37 @@ class UploadThread(QThread):
         asyncio.set_event_loop(loop)
         loop.run_until_complete(self.upload_files())
         self.finished_signal.emit()
-
+                
     async def upload_files(self):
-        files = []
-        for root, _, filenames in os.walk(self.directory):
-            for filename in filenames:
-                file_path = Path(root) / filename
-                if file_path.exists() and os.access(file_path, os.R_OK):
-                    files.append(file_path)
-
+        files = [file_path for file_path in self.directory.rglob("*") if file_path.is_file()]
         total_files = len(files)
         self.log.emit(f"🔎 Tổng số tệp cần tải lên: {total_files}")
         if total_files == 0:
             self.log.emit("🚀 Không có tệp nào cần tải lên.")
             return
 
-       # Truyền callback log vào UploadWorker
-        worker = UploadWorker(self.bot_token, self.user_id, self.log.emit)
+        batch_size = 100  # Số file mỗi batch
         uploaded_count = 0
 
-        async def process_file(file_path):
-            async with self.semaphore:
-                if not self.running:
-                    return None
-                return await worker.upload_file(file_path)
-
-        tasks = [process_file(file_path) for file_path in files]
-        
-        for i, future in enumerate(asyncio.as_completed(tasks)):
-            if not self.running:
+        for i in range(0, total_files, batch_size):
+            if not self.running:  # Kiểm tra nếu quá trình bị dừng
                 self.log.emit("🔥 Tải lên đã bị dừng.")
                 break
-            try:
-                result = await future
+            batch = files[i:i + batch_size]  # Lấy một batch file
+            tasks = [self.process_file(file_path) for file_path in batch]
+            results = await asyncio.gather(*tasks)  # Chạy đồng thời trong batch
+            for result in results:
                 if result:
                     uploaded_count += 1
                     self.progress.emit(int((uploaded_count / total_files) * 100))
                     self.log.emit(result)
-            except Exception as e:
-                self.log.emit(f"❌ Lỗi không xác định: {e}")
+            gc.collect()  # Thu gom rác sau mỗi batch
+
+    async def process_file(self, file_path):
+        async with self.semaphore:
+            if not self.running:
+                return None
+            return await self.worker.upload_file(file_path)
 
 class MainWidget(QWidget):
     def __init__(self):
@@ -241,7 +239,7 @@ class MainWidget(QWidget):
     def start_upload(self):
         self.upload_button.setEnabled(False)
         self.stop_button.setEnabled(True)
-        self.log_display.append("Bắt đầu")
+        self.log_display.append("Bắt đầu. Đang tính số lượng tập tin...")
 
         token = self.input_token.text().strip()
         user_id = self.input_user_id.text().strip()
@@ -264,7 +262,8 @@ class MainWidget(QWidget):
         save_config(token, user_id)
         self.upload_thread = UploadThread(token, self.selected_directory, user_id, max_workers)
         self.upload_thread.progress.connect(self.progress_bar.setValue)
-        self.upload_thread.log.connect(self.log_display.append)
+        # self.upload_thread.log.connect(self.log_display.append)
+        self.upload_thread.log.connect(self.append_limited_log)
         self.upload_thread.finished_signal.connect(self.upload_finished)
         self.upload_thread.start()
 
@@ -285,6 +284,12 @@ class MainWidget(QWidget):
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4)
         self.log_display.append("🗑️ Đã reset lịch sử MD5.")
+        
+    def append_limited_log(self, message):
+        document = self.log_display.document()  # Lấy đối tượng QTextDocument
+        if document.blockCount() > 1000:        # Kiểm tra số khối
+            self.log_display.clear()            # Xóa nội dung nếu vượt quá 1000 dòng
+        self.log_display.append(message)
 
 class AboutWidget(QWidget):
     def __init__(self):
@@ -296,8 +301,8 @@ class AboutWidget(QWidget):
             "Tên phần mềm": "Upload Telegram Multithread",
             "Tác giả": "TekDT",
             "Mô tả": "Phần mềm tải lên tệp lên Telegram với hỗ trợ đa luồng",
-            "Ngày phát hành": "13-03-2025",
-            "Phiên bản": "1.0.1",
+            "Ngày phát hành": released_date,
+            "Phiên bản": version,
             "Email": "dinhtrungtek@gmail.com",
             "Telegram": "@tekdt1152",
             "Facebook": "tekdtcom"
