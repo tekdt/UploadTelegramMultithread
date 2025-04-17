@@ -2,8 +2,8 @@
 - Tên phần mềm: Upload Telegram Multithread
 - Tác giả: TekDT
 - Mô tả: Phần mềm tải lên tệp lên Telegram với hỗ trợ đa luồng
-- Ngày phát hành: 11-04-2025
-- Phiên bản: 1.2.0
+- Ngày phát hành: 17-04-2025
+- Phiên bản: 1.2.1
 - Email: dinhtrungtek@gmail.com
 - Telegram: @tekdt1152
 - Facebook: @tekdtcom
