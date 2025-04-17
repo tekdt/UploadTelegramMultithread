@@ -16,8 +16,9 @@ from PyQt6.QtGui import QIcon
 
 # Cấu hình logger
 CONFIG_FILE = "config.json"
-version = "11/04/2025"
-released_date = "1.2.0"
+version = "17/04/2025"
+released_date = "1.2.1"
+
 # Hàm tính MD5
 def calculate_md5(file_path):
     hash_md5 = hashlib.md5()
@@ -61,15 +62,17 @@ def save_md5(md5_hash):
 def is_md5_uploaded(md5_hash):
     config = load_config()
     return md5_hash in config.get("hash_string", [])
-    
+
 async def load_config_async():
     return await asyncio.to_thread(load_config)
 
-async def save_md5_async(md5_hash):
-    await asyncio.to_thread(save_md5, md5_hash)
+async def save_md5_async(md5_hash, config_lock):
+    async with config_lock:
+        await asyncio.to_thread(save_md5, md5_hash)
 
-async def is_md5_uploaded_async(md5_hash):
-    return await asyncio.to_thread(is_md5_uploaded, md5_hash)
+async def is_md5_uploaded_async(md5_hash, config_lock):
+    async with config_lock:
+        return await asyncio.to_thread(is_md5_uploaded, md5_hash)
 
 class UploadWorker:
     def __init__(self, bot_token, user_id, log_callback):
@@ -85,16 +88,14 @@ class UploadWorker:
             return f"❌ Không thể tính MD5: {file_path.name}"
         
         # Kiểm tra MD5 với khóa
-        async with self.config_lock:
-            if await is_md5_uploaded_async(file_md5):
-                return f"⚡ Bỏ qua: {file_path.name} (đã tải trước đó)"
+        if await is_md5_uploaded_async(file_md5, self.config_lock):
+            return f"⚡ Bỏ qua: {file_path.name} (đã tải trước đó)"
         
         try:
             with open(file_path, 'rb') as f:
                 await self.bot.send_document(chat_id=self.user_id, document=f)
             # Lưu MD5 với khóa
-            async with self.config_lock:
-                await save_md5_async(file_md5)
+            await save_md5_async(file_md5, self.config_lock)
             return f"✅ Đã tải lên: {file_path.name}"
         except TelegramError as e:
             error_str = str(e)
@@ -108,8 +109,7 @@ class UploadWorker:
                     try:
                         with open(file_path, 'rb') as f:
                             await self.bot.send_document(chat_id=self.user_id, document=f)
-                        async with self.config_lock:
-                            await save_md5_async(file_md5)
+                        await save_md5_async(file_md5, self.config_lock)
                         return f"✅ Đã tải lên sau khi chờ: {file_path.name}"
                     except TelegramError as e2:
                         return f"❌ Lỗi khi tải {file_path.name} sau khi chờ: {e2}"
@@ -236,10 +236,8 @@ class MainWidget(QWidget):
         self.setLayout(layout)
 
     def update_thread_count(self):
-        # Lấy token, user_id và thư mục hiện có (nếu có)
         token = self.input_token.text().strip()
         user_id = self.input_user_id.text().strip()
-        # Cập nhật ngay thread_count vào config.json
         save_config(token, user_id, self.selected_directory, self.thread_count.value())
     
     def select_directory(self):
@@ -275,7 +273,6 @@ class MainWidget(QWidget):
         save_config(token, user_id)
         self.upload_thread = UploadThread(token, self.selected_directory, user_id, max_workers)
         self.upload_thread.progress.connect(self.progress_bar.setValue)
-        # self.upload_thread.log.connect(self.log_display.append)
         self.upload_thread.log.connect(self.append_limited_log)
         self.upload_thread.finished_signal.connect(self.upload_finished)
         self.upload_thread.start()
@@ -299,9 +296,9 @@ class MainWidget(QWidget):
         self.log_display.append("🗑️ Đã reset lịch sử MD5.")
         
     def append_limited_log(self, message):
-        document = self.log_display.document()  # Lấy đối tượng QTextDocument
-        if document.blockCount() > 1000:        # Kiểm tra số khối
-            self.log_display.clear()            # Xóa nội dung nếu vượt quá 1000 dòng
+        document = self.log_display.document()
+        if document.blockCount() > 1000:
+            self.log_display.clear()
         self.log_display.append(message)
 
 class AboutWidget(QWidget):
@@ -309,7 +306,6 @@ class AboutWidget(QWidget):
         super().__init__()
         layout = QVBoxLayout()
 
-        # Thông tin phần mềm
         info = {
             "Tên phần mềm": "Upload Telegram Multithread",
             "Tác giả": "TekDT",
@@ -330,28 +326,22 @@ class AboutWidget(QWidget):
 class TelegramUploader(QTabWidget):
     def __init__(self):
         super().__init__()
-        # Tạo các widget cho từng tab
         self.main_tab = MainWidget()
         self.about_tab = AboutWidget()
-
-        # Thêm các tab
         self.addTab(self.main_tab, "Main")
         self.addTab(self.about_tab, "About")
-
-        # Thiết lập tiêu đề và kích thước cửa sổ
         self.setWindowTitle("Upload Telegram Multithread")
         self.resize(500, 550)
 
 if __name__ == "__main__":
     app = QApplication([])
-    # Đặt icon cho Taskbar khi ứng dụng chạy
     if hasattr(sys, "_MEIPASS"):
         icon_path = os.path.join(sys._MEIPASS, "logo.ico")
     else:
         icon_path = "logo.ico"
 
-    app.setWindowIcon(QIcon(icon_path))  # Đặt biểu tượng cho ứng dụng
+    app.setWindowIcon(QIcon(icon_path))
     window = TelegramUploader()
-    window.setWindowIcon(QIcon(icon_path))  # Đặt biểu tượng cho cửa sổ
+    window.setWindowIcon(QIcon(icon_path))
     window.show()
     app.exec()
